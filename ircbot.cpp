@@ -13,7 +13,7 @@
 
 using namespace std;
 
-#define DEBUGMODE 1
+#define DEBUGMODE 0
 
 #define MAXBUFFERSIZE 1024
 #define MAXMSGPARAMS 5
@@ -133,7 +133,6 @@ User* IRCBot::authUser(string u, string p, string n, string h)
 		{
 			current_users.at(i).nick = n;
 			current_users.at(i).host = h;
-			current_users.at(i).flags = 0;
 			return &current_users.at(i);
 		}
 	}
@@ -214,6 +213,8 @@ void IRCBot::sendPrivMsg(string msgLoc, string msgOut)
 
 void IRCBot::messageLoop()
 {
+	loadUsers();
+
 	for (int i = 1; true; i++) {
 		char buf[MAXBUFFERSIZE];
 		int bytes_in = recv(sock, buf, MAXBUFFERSIZE-1, 0);
@@ -376,11 +377,6 @@ void IRCBot::messageLoop()
 				}
 				else
 				{
-					if (params[0] == "A" || params[0] == "a")
-					{
-						loadUsers();
-						continue;
-					}
 					if (params[0] == "B" || params[0] == "b")
 					{
 						sendPrivMsg(msgLoc, "Listing users...");
@@ -394,33 +390,12 @@ void IRCBot::messageLoop()
 						sendPrivMsg(msgLoc, s.str());
 						continue;
 					}
-					if (params[0] == "C" || params[0] == "c")
-					{
-						if (remote_user != NULL)
-						{
-							if (!(remote_user->flags & USER_ISADMIN))
-							{
-								remote_user->flags |= USER_ISADMIN;
-								sendPrivMsg(remote_nick, "You are now an admin.");
-								continue;
-							}
-							if (!(remote_user->flags & USER_ISMASTER))
-							{
-								remote_user->flags |= USER_ISMASTER;
-								sendPrivMsg(remote_nick, "You are now a master.");
-								continue;
-							}
-							remote_user->flags = 0;
-							sendPrivMsg(remote_nick, "You are now a normal user.");
-						}
-						continue;
-					}
 				}
 			}
 
 			if (command == "JOIN") 
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISMASTER)
+				if (remote_user != NULL && (remote_user->flags & USER_ISMASTER))
 				{
 					stringstream s;
 					s << ":source JOIN " << params[0];
@@ -494,6 +469,7 @@ void IRCBot::messageLoop()
 							User* attUser = authUser(params[0], params[1], remote_nick, remote_host);
 							if (attUser != NULL)
 							{
+
 								sendPrivMsg(msgLoc, "You are now authenticated!");
 							} else sendPrivMsg(msgLoc, "Incorrect username or password");
 						} else sendPrivMsg(msgLoc, "Invalid syntax");
