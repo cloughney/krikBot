@@ -1,0 +1,3 @@
+#define USER_DOESNOTEXIST 	1
+#define USER_ISADMIN 		2
+#define USER_ISMASTER 		4
