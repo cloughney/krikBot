@@ -44,12 +44,18 @@ private:
 	std::string strToUpper(std::string);
 
 	//users
+	void loadUsers();
 	User* getUserByName(std::string);
 	User* getUserByHost(std::string);
 	User* authUser(std::string, std::string, std::string, std::string);
 	User* addUser(std::string, std::string);
-	void loadUsers();
+
+	//channels
 	void loadChannels();
+	void addChannel(Channel);
+	void removeChannel(Channel);
+	void removeChannel(std::string);
+	Channel* getChanByName(std::string);
 	bool isOper(Channel, User);
 
 	//irc

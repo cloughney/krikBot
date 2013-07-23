@@ -1,7 +1,6 @@
 #include "ircbot.h"
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <cstring>
 #include <cstddef>
 #include <sys/types.h>
@@ -10,6 +9,8 @@
 #include <vector>
 #include <unistd.h>
 #include "ircuser.h"
+#include <stdlib.h>
+#include <time.h>
 
 using namespace std;
 
@@ -34,7 +35,7 @@ IRCBot::~IRCBot()
 
 string IRCBot::strToUpper(string strIn)
 {
-	stringstream s;
+	string output = "";
 	for (int i = 0; i < strIn.length(); i++)
 	{
 		char c = strIn[i];
@@ -42,9 +43,9 @@ string IRCBot::strToUpper(string strIn)
 		{
 			c -= 32;
 		}
-		s << c;
+		output += c;
 	}
-	return s.str();
+	return output;
 }
 
 
@@ -163,11 +164,37 @@ void IRCBot::loadChannels()
 
 }
 
+void IRCBot::addChannel(Channel c)
+{
+	if (getChanByName(c.name) == NULL)
+	{
+		current_channels.push_back(c);
+	}
+}
+
+void IRCBot::removeChannel(Channel c)
+{
+
+}
+
+void IRCBot::removeChannel(string c)
+{
+
+}
+
+Channel* IRCBot::getChanByName(string c)
+{
+	for (int i = current_channels.size()-1; i >= 0; i--)
+		if (current_channels.at(i).name == c) return &current_channels.at(i);
+	return NULL;
+}
 
 bool IRCBot::isOper(Channel chan, User host)
 {
 	//TODO: check for user's oper status in channel
 }
+
+
 
 
 
@@ -180,17 +207,15 @@ void IRCBot::sendRawMsg(string msgOut)
 {
 	if (sock > 1)
 	{
-		stringstream s;
-		s << msgOut << "\r\n";
-		const char *buf = s.str().c_str();
-		int sent = send(sock, buf, strlen(buf), 0);
-		int remaining = strlen(buf) - sent;
+		msgOut += "\r\n";
+		int sent = send(sock, msgOut.c_str(), msgOut.length(), 0);
+		int remaining = msgOut.length() - sent;
 		while (remaining > 0)
 		{
-			sent = send(sock, buf, strlen(buf) - sent, sent);
+			sent += send(sock, msgOut.c_str(), remaining, sent);
 			remaining -= sent;
 		}
-		if (DEBUGMODE) cout << s.str() << endl;
+		if (DEBUGMODE) cout << msgOut << endl;
 	}
 }
 
@@ -204,10 +229,8 @@ void IRCBot::sendPrivMsg(string msgLoc, string msgOut)
 	}
 	if (sock > 1) 
 	{
-		stringstream s;
-		s.clear();
-		s << ":source PRIVMSG " << msgLoc << " :" << msgOut;
-		sendRawMsg(s.str());
+		msgOut = "PRIVMSG " + msgLoc + " :" + msgOut;
+		sendRawMsg(msgOut);
 	}
 }
 
@@ -220,20 +243,22 @@ void IRCBot::messageLoop()
 		int bytes_in = recv(sock, buf, MAXBUFFERSIZE-1, 0);
 		buf[bytes_in] = '\0';
 		if (bytes_in < 1) {
-			if (DEBUGMODE == 1) cout << "Connection closed by remote host (or unexpectedly)." << endl;
+			if (DEBUGMODE) cout << "Connection closed by remote host (or unexpectedly)." << endl;
 			return;
 		}
 
 		if (i < 3) continue;
 		if (i == 3) 
 		{
-			stringstream s;
-			s << "NICK " << nick;
-			sendRawMsg(s.str());
-			s.str(string());
-			s << "USER " << nick << " 0 * :" << "Krik Botman";
-			sendRawMsg(s.str());
-			if (DEBUGMODE == 1) cout << "Sent NICK/USER" << endl;
+			string msg;
+			msg = "NICK ";
+			msg += nick;
+			sendRawMsg(msg);
+			msg = "USER ";
+			msg += nick;
+			msg += " 0 * :Krik Botman";
+			sendRawMsg(msg);
+			if (DEBUGMODE) cout << "Sent NICK/USER" << endl;
 			continue;
 		}
 
@@ -258,7 +283,7 @@ void IRCBot::messageLoop()
 				command = msgIn.substr(0, posSpc);
 				paramStr = msgIn.substr(posSpc+1);
 
-				if (DEBUGMODE == 1)
+				if (DEBUGMODE)
 				{
 					cout << "remote_nick: '" << remote_nick << "'" << endl;
 					cout << "remote_host: '" << remote_host << "'" << endl;
@@ -273,7 +298,7 @@ void IRCBot::messageLoop()
 				posSpc = msgIn.find_first_of(' ');
 				command = msgIn.substr(0, posSpc);
 				paramStr = msgIn.substr(posSpc+1);
-				if (DEBUGMODE == 1)
+				if (DEBUGMODE)
 				{
 					cout << "remote_nick: (N/A - Server) " << endl;
 					cout << "remote_host: '" << remote_host << "'" << endl;
@@ -285,7 +310,7 @@ void IRCBot::messageLoop()
 			remote_host = "";
 			command = msgIn.substr(0, msgIn.find_first_of(' '));
 			paramStr = msgIn.substr(msgIn.find_first_of(' ')+1);
-			if (DEBUGMODE == 1) cout << "No host in message." << endl << "command: '" << command << "'" << endl;
+			if (DEBUGMODE) cout << "No host in message." << endl << "command: '" << command << "'" << endl;
 		}
 		//strip the endline characters from the message
 		paramStr = paramStr.substr(0, strlen(paramStr.c_str())-2);
@@ -293,10 +318,9 @@ void IRCBot::messageLoop()
 		//PING RESPONSE
 		if (command == "PING")
 		{
-			stringstream s;
-			s << "PONG " << paramStr;
-			sendRawMsg(s.str());
-			if (DEBUGMODE == 1) cout << "PING/PONG! (strlen: " << strlen(paramStr.c_str()) << ") (" << s.str().c_str() << ")" << endl;
+			command = "PONG " + paramStr;
+			sendRawMsg(command);
+			if (DEBUGMODE) cout << "PING/PONG! (" << command << ")" << endl;
 			continue;
 		}
 
@@ -368,39 +392,13 @@ void IRCBot::messageLoop()
 				continue;
 			}
 
-			if (command == "TEST")
-			{
-				if (params[0] == "")
-				{
-					sendPrivMsg(msgLoc, "Test Usage: TEST <A|B|C|D...>");
-					continue;
-				}
-				else
-				{
-					if (params[0] == "B" || params[0] == "b")
-					{
-						sendPrivMsg(msgLoc, "Listing users...");
-						stringstream s;
-						s << "Users: ";
-						for (int i = 0; i < current_users.size(); i++)
-						{
-							s << current_users.at(i).name;
-							if (i != current_users.size()-1) s << ", ";
-						}
-						sendPrivMsg(msgLoc, s.str());
-						continue;
-					}
-				}
-			}
 
 			if (command == "JOIN") 
 			{
 				if (remote_user != NULL && (remote_user->flags & USER_ISMASTER))
 				{
-					stringstream s;
-					s << ":source JOIN " << params[0];
-					sendRawMsg(s.str());
-					sendPrivMsg(msgLoc, "Joined!");
+					command = "JOIN " + params[0];
+					sendRawMsg(command);
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 				continue;
 			}
@@ -411,14 +409,13 @@ void IRCBot::messageLoop()
 				{
 					if (msgLoc[0] == '#')
 					{
-						stringstream s;
-						s << ":source PART ";
+						command = ":source PART ";
 						if (params[0] == "")
-							s << msgLoc;
+							command += msgLoc;
 						else
-							s << params[0];
-						s << " :deuces";
-						sendRawMsg(s.str());
+							command += params[0];
+						command += " :deuces";
+						sendRawMsg(command);
 					}
 					else
 					{
@@ -426,11 +423,9 @@ void IRCBot::messageLoop()
 						{
 							if (params[0][0] == '#')
 							{
-								stringstream s;
-								s << ":source PART " << params[0] << " :deuces";
-								sendRawMsg(s.str());
-								sendPrivMsg(msgLoc, "Parted!");
-							} else sendPrivMsg(msgLoc, "That's not a channel. I can't part that.");
+								command = ":source PART " + params[0] + " :deuces";
+								sendRawMsg(command);
+							} else sendPrivMsg(msgLoc, "Invalid syntax! Use: PART <channel>");
 						}
 						else sendPrivMsg(msgLoc, "Invalid syntax! Use: PART <channel>");
 					}
@@ -444,10 +439,8 @@ void IRCBot::messageLoop()
 				{
 					if (params[0] != "")
 					{
-						sendPrivMsg(msgLoc, "I'll see what I can do...");
-						stringstream s;
-						s << ":source NICK " << params[0];
-						sendRawMsg(s.str());
+						command = ":source NICK " + params[0];
+						sendRawMsg(command);
 					}
 					else sendPrivMsg(msgLoc, "Invalid syntax! Use: NICK <new_nick>");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
@@ -472,7 +465,7 @@ void IRCBot::messageLoop()
 
 								sendPrivMsg(msgLoc, "You are now authenticated!");
 							} else sendPrivMsg(msgLoc, "Incorrect username or password");
-						} else sendPrivMsg(msgLoc, "Invalid syntax");
+						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: AUTH <username> <password>");
 					} else sendPrivMsg(msgLoc, "You are already authenticated!");
 				} else sendPrivMsg(msgLoc, "This command must be used in a private message. Noob.");
 				continue;
@@ -482,25 +475,24 @@ void IRCBot::messageLoop()
 			{
 				if (remote_user != NULL)
 				{
-					stringstream s;
-					s << "You are authenticated with the username '" << remote_user->name << "'.";
-					sendPrivMsg(remote_nick, s.str());
-					s.str("");
+					command = "You are authenticated with the username '" + remote_user->name + "'.";
+					sendPrivMsg(remote_nick, command);
+
 					if (remote_user->flags & USER_ISMASTER) {
-						s << "You are a bot master.";
-						sendPrivMsg(remote_nick, s.str());
+						command = "You are a bot master.";
+						sendPrivMsg(remote_nick, command);
 					}
 					else 
 					{
 						if (remote_user->flags & USER_ISADMIN)
 						{
-							s << "You are an administrator.";
-							sendPrivMsg(remote_nick, s.str());
+							command = "You are an administrator.";
+							sendPrivMsg(remote_nick, command);
 						}
 						else
 						{
-							s << "You are a normal user.";
-							sendPrivMsg(remote_nick, s.str());
+							command = "You are a normal user.";
+							sendPrivMsg(remote_nick, command);
 						}
 					}
 				}
@@ -518,17 +510,12 @@ void IRCBot::messageLoop()
 				{
 					if (params[0] != "")
 					{
-						string chan = params[0];
-						if (chan[0] == '#')
+						if (params[0][0] == '#')
 						{
-							stringstream s;
-							s << ":source INVITE " << remote_nick << " :" << params[0];
-							sendRawMsg(s.str());
+							command = ":source INVITE " + remote_nick + " :" + params[0];
+							sendRawMsg(command);
 						}
-						else
-						{
-							sendPrivMsg(msgLoc, "Something is wrong.");
-						}
+						else sendPrivMsg(msgLoc, "Invalid syntax! Use: INVITEME <channel>");
 					} else sendPrivMsg(msgLoc, "Invalid syntax! Use: INVITEME <channel>");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 				continue;
@@ -540,11 +527,26 @@ void IRCBot::messageLoop()
 				{
 					if (msgLoc[0] == '#')
 					{
-						stringstream s;
-						s << ":source MODE " << msgLoc << " +o :" << remote_nick;
-						sendRawMsg(s.str());
+						command = ":source MODE " + msgLoc + " +o :" + remote_nick;
+						sendRawMsg(command);
 					}
 					else sendPrivMsg(msgLoc, "This command must be executed in a channel. Noob.");
+				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				continue;
+			}
+
+			if (command == "CHANNELS")
+			{
+				if (remote_user != NULL && (remote_user->flags & USER_ISADMIN))
+				{
+					sendPrivMsg(remote_nick, "Currently in the following channels:");
+					command = "";
+					for (int i = current_channels.size()-1; i >= 0; i--)
+					{
+						command += current_channels.at(i).name;
+						command += (i == 0) ? "" : " ";
+					}
+					sendPrivMsg(remote_nick, command);
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 				continue;
 			}
@@ -559,18 +561,16 @@ void IRCBot::messageLoop()
 					{
 						if (params[0] != "")
 						{
-							stringstream s;
-							s << ":source KICK " << msgLoc << " " << params[0] << " :kicked";
-							sendRawMsg(s.str());
+							command = ":source KICK " + msgLoc + " " + params[0] + " :kicked";
+							sendRawMsg(command);
 						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: KICK <nick>");
 					}
 					else
 					{
 						if (params[0][0] == '#' && params[1] != "")
 						{
-							stringstream s;
-							s << ":source KICK " << params[0] << " " << params[1] << " :kicked";
-							sendRawMsg(s.str());
+							command = ":source KICK " + params[0] + " " + params[1] + " :kicked";
+							sendRawMsg(command);
 							sendPrivMsg(msgLoc, "Kicked!");
 						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: KICK <channel> <nick>");
 					}
@@ -586,29 +586,61 @@ void IRCBot::messageLoop()
 					{
 						if (params[0] != "")
 						{
-							stringstream s;
-							s << "Hey " << params[0] << ", what do you put on your feet before you ride a horse?";
-							sendPrivMsg(msgLoc, s.str());
-							s.str("");
-							s << ":source KICK " << msgLoc << " " << params[0] << " :BOOTS!";
+							command = "Hey " + params[0] + ", what do you put on your feet before you ride a horse?";
+							sendPrivMsg(msgLoc, command);
+							command = ":source KICK " + msgLoc + " " + params[0] + " :BOOTS!";
 							sleep(3);
-							sendRawMsg(s.str());
+							sendRawMsg(command);
 						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: BOOT <nick>");
 					}
 					else
 					{
 						if (params[0][0] == '#' && params[1] != "")
 						{
-							stringstream s;
-							s << "Hey " << params[0] << ", what do you put on your feet before you ride a horse?";
-							sendPrivMsg(msgLoc, s.str());
-							s.str("");
-							s << ":source KICK " << params[0] << " " << params[1] << " :BOOTS!";
+							command = "Hey " + params[0] + ", what do you put on your feet before you ride a horse?";
+							sendPrivMsg(msgLoc, command);
+							command = ":source KICK " + params[0] + " " + params[1] + " :BOOTS!";
 							sleep(3);
-							sendRawMsg(s.str());
+							sendRawMsg(command);
 							sendPrivMsg(msgLoc, "Kicked!");
 						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: BOOT <channel> <nick>");
 					}
+				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				continue;
+			}
+
+			if (command == "OP")
+			{
+				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				{
+					if (msgLoc[0] == '#')
+					{
+						if (params[0] != "")
+						{
+							command = "MODE ";
+							command += msgLoc + " +o";
+							command += " " + params[0];
+							sendRawMsg(command);
+						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: OP <nick>");
+					} else sendPrivMsg(msgLoc, "This command must be used in a channel!");
+				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				continue;
+			}
+
+			if (command == "DEOP")
+			{
+				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				{
+					if (msgLoc[0] == '#')
+					{
+						if (params[0] != "")
+						{
+							command = "MODE ";
+							command += msgLoc + " -o";
+							command += " " + params[0];
+							sendRawMsg(command);
+						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: DEOP <nick>");
+					} else sendPrivMsg(msgLoc, "This command must be used in a channel!");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 				continue;
 			}
@@ -644,18 +676,67 @@ void IRCBot::messageLoop()
 					{
 						if (params[0] != "")
 						{
-							stringstream s;
-							s << params[0] << " " << params[1] << " " << params[2] << " " << params[3] << " " << params[4] << "\r\n";
-							sendPrivMsg(msgLoc, s.str());
+							command = params[0] + " " + params[1] + " " + params[2] + " " + params[3] + " " + params[4];
+							sendPrivMsg(msgLoc, command);
 						}
-						else sendPrivMsg(msgLoc, "Invalid syntax! Use: TELL <nick> <message>");
+						else sendPrivMsg(msgLoc, "Invalid syntax! Use: SAY <nick> <message>");
 					}
 					else
 					{
-				 		sendPrivMsg(msgLoc, "SAY in private messages is not enabled.");
+				 		if (params[0] != "" && params[1] != "")
+				 		{
+				 			if (params[0][0] == '#')
+				 			{
+				 				command = params[1] + " " + params[2] + " " + params[3] + " " + params[4];
+								sendPrivMsg(params[0], command);
+				 			} else sendPrivMsg(msgLoc, "Invalid syntax! Use: SAY <channel> <message>");
+				 		} else sendPrivMsg(msgLoc, "Invalid syntax! Use: SAY <channel> <message>");
 					}
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 				continue;
+			}
+
+			if (command == "NEWREASON")
+			{
+				if (remote_user != NULL)
+				{
+					if (params[0] != "")
+					{
+						ofstream f_thate_out("t-hate", ios::app | ios::ate);
+						if (f_thate_out.is_open())
+						{
+							f_thate_out << params[0] << " " << params[1] << " " << params[2] << " " << params[3] << " " << params[4] << endl;
+							f_thate_out.close();
+							sendPrivMsg(msgLoc, "Reason added!");
+						} else sendPrivMsg(msgLoc, "Couldn't open T-Hate file!");
+					} else sendPrivMsg(msgLoc, "Invalid syntax! Use: NEWREASON <reason>");
+				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+			}
+
+			if (command == "GETREASON")
+			{
+				if (remote_user != NULL)
+				{
+					ifstream f_thate_in("t-hate");
+					if (f_thate_in.is_open())
+					{
+						vector<string> lines;
+						int count = 0;
+						while (f_thate_in.good())
+						{
+							string lineIn;
+							getline(f_thate_in, lineIn);
+							lines.push_back(lineIn);
+							count++;
+						}
+						f_thate_in.close();
+						srand(time(NULL));
+						if (DEBUGMODE) cout << "Count: " << count << endl;
+						count = rand() % count;
+						if (DEBUGMODE) cout << "Rand: " << count << endl;
+						sendPrivMsg(msgLoc, lines.at(count));
+					} else sendPrivMsg(msgLoc, "Couldn't open T-Hate file!");
+				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 			}
 
 		}

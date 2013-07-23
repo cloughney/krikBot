@@ -60,8 +60,6 @@ int main() {
 	string irc_server = "";
 	string irc_port = "";
 	string irc_nick = "";
-	string pwd_master = "";
-	string pwd_op = "";
 
 	readSettings(irc_server, irc_port, irc_nick);
 	
