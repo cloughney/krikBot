@@ -21,6 +21,7 @@ using namespace std;
 
 IRCBot::IRCBot()
 {
+	versionString = "0.1.001"; // VERSION
 	publicTrigger = '!';
 	keepAlive = true;
 }
@@ -472,6 +473,12 @@ void IRCBot::messageLoop()
 					}
 					else sendPrivMsg(msgLoc, "Invalid syntax! Use: NICK <new_nick>");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				continue;
+			}
+
+			if (command == "VERSION")
+			{
+				sendPrivMsg(msgLoc, "Current Version: " + versionString);
 				continue;
 			}
 

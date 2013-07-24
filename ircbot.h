@@ -27,6 +27,8 @@ struct Channel {
 class IRCBot
 {
 private:
+	std::string versionString;
+
 	const char *host;
 	const char *port;
 	const char *nick;
