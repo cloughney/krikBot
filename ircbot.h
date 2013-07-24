@@ -39,9 +39,12 @@ private:
 
 	int sock;
 	int sock_status;
+	bool keepAlive;
+	//std::thread tMessageLoop;
 
 	//util functions
 	std::string strToUpper(std::string);
+	std::string getRandomLine(std::string);
 
 	//users
 	void loadUsers();

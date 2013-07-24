@@ -22,6 +22,7 @@ using namespace std;
 IRCBot::IRCBot()
 {
 	publicTrigger = '!';
+	keepAlive = true;
 }
 
 IRCBot::~IRCBot()
@@ -46,6 +47,33 @@ string IRCBot::strToUpper(string strIn)
 		output += c;
 	}
 	return output;
+}
+
+string IRCBot::getRandomLine(string file)
+{
+	ifstream f_in(file.c_str());
+	if (f_in.is_open())
+	{
+		vector<string> lines;
+		lines.clear();
+		int count = 0;
+		while (f_in.good())
+		{
+			string lineIn;
+			getline(f_in, lineIn);
+			if (lineIn != "")
+			{
+				lines.push_back(lineIn);
+				count++;
+			}
+		}
+		f_in.close();
+		srand(time(NULL));
+		if (DEBUGMODE) cout << "Reading Random Line" << endl << "Count: " << count << endl;
+		count = rand() % count;
+		if (DEBUGMODE) cout << "Rand: " << count << endl;
+		return lines.at(count);
+	} else return "";
 }
 
 
@@ -238,7 +266,7 @@ void IRCBot::messageLoop()
 {
 	loadUsers();
 
-	for (int i = 1; true; i++) {
+	for (int i = 1; keepAlive; i++) {
 		char buf[MAXBUFFERSIZE];
 		int bytes_in = recv(sock, buf, MAXBUFFERSIZE-1, 0);
 		buf[bytes_in] = '\0';
@@ -717,33 +745,16 @@ void IRCBot::messageLoop()
 			{
 				if (remote_user != NULL)
 				{
-					ifstream f_thate_in("t-hate");
-					if (f_thate_in.is_open())
-					{
-						vector<string> lines;
-						int count = 0;
-						while (f_thate_in.good())
-						{
-							string lineIn;
-							getline(f_thate_in, lineIn);
-							lines.push_back(lineIn);
-							count++;
-						}
-						f_thate_in.close();
-						srand(time(NULL));
-						if (DEBUGMODE) cout << "Count: " << count << endl;
-						count = rand() % count;
-						if (DEBUGMODE) cout << "Rand: " << count << endl;
-						sendPrivMsg(msgLoc, lines.at(count));
-					} else sendPrivMsg(msgLoc, "Couldn't open T-Hate file!");
+					command = getRandomLine("t-hate");
+					if (command != "")
+						sendPrivMsg(msgLoc, command);
+					else sendPrivMsg(msgLoc, "Uh oh... Error");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 			}
 
 		}
 	}
 }
-
-
 
 
 //EXTERNAL FUNCTIONS
@@ -780,15 +791,18 @@ bool IRCBot::start(const char *_host, const char *_port, const char *_nick)
 
 	freeaddrinfo(host_info);
 
+	//tMessageLoop(messageLoop);
+	//tMessageLoop.join();
 	messageLoop();
 
 	cout << "Closing connection..." << endl;
 
 	close(sock);
 
+	return true;
 }
 
 void IRCBot::stop()
 {
-	//TODO: stop the bot? probably not relavent unless I thread
+	keepAlive = false;
 }
