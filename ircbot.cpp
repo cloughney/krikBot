@@ -11,17 +11,18 @@
 #include "ircuser.h"
 #include <stdlib.h>
 #include <time.h>
+#include <sstream>
 
 using namespace std;
 
-#define DEBUGMODE 0
+#define DEBUGMODE 1
 
 #define MAXBUFFERSIZE 1024
 #define MAXMSGPARAMS 5
 
 IRCBot::IRCBot()
 {
-	versionString = "0.1.001"; // VERSION
+	versionString = "0.1.002 25Jul13"; // VERSION
 	publicTrigger = '!';
 	keepAlive = true;
 }
@@ -77,6 +78,24 @@ string IRCBot::getRandomLine(string file)
 	} else return "";
 }
 
+int IRCBot::getIntFromStr(string strIn)
+{
+	int output = 0;
+	for (int i = 0; i < strIn.length(); i++)
+	{
+		if (strIn[i] >= 48 && strIn[i] <= 57)
+		{
+			int tmp = (strIn[i] - 48);
+			for (int x = 1; x < strIn.length()-i; x++)
+				tmp *= 10;
+			output += tmp;
+		}
+		else
+			return 0; //non-number character
+	}
+	return output;
+}
+
 
 
 
@@ -97,8 +116,7 @@ void IRCBot::loadUsers()
 			
 			string uname;
 			string pword;
-			bool isAdmin;
-			bool isMaster;
+			int access;
 
 			short comma = lineIn.find_first_of(',');
 			if (comma == string::npos) continue; //break if the line is invalid
@@ -110,38 +128,49 @@ void IRCBot::loadUsers()
 			pword = lineIn.substr(0, comma);
 			lineIn = lineIn.substr(comma+1);
 
-			comma = lineIn.find_first_of(',');
-			if (comma == string::npos) continue; //break if the line is invalid
-			isAdmin = (lineIn.substr(0, comma) == "1");
-			lineIn = lineIn.substr(comma+1);
+			access = getIntFromStr(lineIn.substr(0, comma));
 
-			isMaster = (lineIn == "1");
-
-			User * newUser = addUser(uname, pword);
-			if (newUser != NULL) {
-				if (isAdmin) newUser->flags |= USER_ISADMIN;
-				if (isMaster) newUser->flags |= (USER_ISADMIN | USER_ISMASTER);
-			}
+			addUser(uname, pword, access); //TODO: mem-leak potential?
 		}
 		f_users_in.close();
 	}
 	else
 	{
-		ofstream f_conf_out("ircusers");
-		if (f_conf_out.is_open())
+		ofstream f_users_out("ircusers");
+		if (f_users_out.is_open())
 		{
-			f_conf_out << "# FILE USAGE: username,password,isAdmin,isMaster" << endl;
-			f_conf_out.close();
+			f_users_out << "# FILE USAGE: username,password,access_level" << endl;
+			f_users_out.close();
 		}
 		else cout << "Unable to write to ircusers" << endl;
 	}
+
+	if (DEBUGMODE)
+	{
+		cout << "Users Loaded! - Listing users:" << endl;
+		for (int i = 0; i < current_users.size(); i++)
+			cout << current_users.at(i).name << "|" << current_users.at(i).passwd << "|" << current_users.at(i).access_level << endl;
+	}
+}
+
+void IRCBot::saveUsers()
+{
+	ofstream f_users_out("ircusers");
+	if (f_users_out.is_open())
+	{
+		f_users_out << "# FILE USAGE: username,password,access_level" << endl;
+		for (int i = 0; i < current_users.size(); i++)
+			f_users_out << current_users.at(i).name << "," << current_users.at(i).passwd << "," << current_users.at(i).access_level << endl;
+		f_users_out.close();
+	}
+	else cout << "Unable to write to ircusers" << endl;
 }
 
 User* IRCBot::getUserByName(string n)
 {
 	for (int i = 0; i < current_users.size(); i++)
 	{
-		if (current_users.at(i).name == n) return &current_users.at(i);
+		if (strToUpper(current_users.at(i).name) == strToUpper(n)) return &current_users.at(i);
 	}
 	return NULL;
 }
@@ -169,13 +198,14 @@ User* IRCBot::authUser(string u, string p, string n, string h)
 	return NULL;
 }
 
-User* IRCBot::addUser(string uname, string pword)
+User* IRCBot::addUser(string uname, string pword, int access_level)
 {
 	if (getUserByName(uname) != NULL) return NULL;
 	User newUser;
 	newUser.name = uname;
 	//TODO: generate passwd
 	newUser.passwd = pword;
+	newUser.access_level = access_level;
 	current_users.push_back(newUser);
 
 	//TODO: add user to file!!!!
@@ -267,6 +297,8 @@ void IRCBot::messageLoop()
 {
 	loadUsers();
 
+	string lastCmdOut = "";
+
 	for (int i = 1; keepAlive; i++) {
 		char buf[MAXBUFFERSIZE];
 		int bytes_in = recv(sock, buf, MAXBUFFERSIZE-1, 0);
@@ -344,6 +376,8 @@ void IRCBot::messageLoop()
 		//strip the endline characters from the message
 		paramStr = paramStr.substr(0, strlen(paramStr.c_str())-2);
 
+
+
 		//PING RESPONSE
 		if (command == "PING")
 		{
@@ -352,6 +386,46 @@ void IRCBot::messageLoop()
 			if (DEBUGMODE) cout << "PING/PONG! (" << command << ")" << endl;
 			continue;
 		}
+
+
+		//CHANNEL JOIN MESSAGE
+		if (command == "JOIN")
+		{
+			if (remote_nick == nick)
+			{
+				if (DEBUGMODE) cout << "JOINED CHANNEL!" << endl << "'" << paramStr << "'" << endl;
+				//Channel c;
+				//c.name = paramStr;
+				//current_channels.push_back();
+			}
+			continue;
+		}
+
+		//CHANNEL PART MESSAGE
+		if (command == "PART")
+		{
+			if (remote_nick == nick)
+			{
+				if (DEBUGMODE) cout << "PARTED CHANNEL!" << endl << "'" << paramStr << "'" << endl;
+				//current_channels.push_back(paramStr);
+			}
+			continue;
+		}
+
+		//CHANNEL KICK MESSAGE
+		if (command == "KICK")
+		{
+			//if (remote_nick == nick)
+			//{
+				if (DEBUGMODE) cout << "KICKED FROM CHANNEL!" << endl << "'" << paramStr << "'" << endl;
+				//current_channels.push_back(paramStr);
+			//}
+			continue;
+		}
+
+
+
+
 
 		//MESSAGE RECEIVED
 		if (command == "PRIVMSG")
@@ -413,7 +487,7 @@ void IRCBot::messageLoop()
 
 			if (command == "QUIT") 
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISMASTER)
+				if (remote_user != NULL && remote_user->access_level >= 100)
 				{
 					sendRawMsg("QUIT :peace");
 					return;
@@ -424,7 +498,7 @@ void IRCBot::messageLoop()
 
 			if (command == "JOIN") 
 			{
-				if (remote_user != NULL && (remote_user->flags & USER_ISMASTER))
+				if (remote_user != NULL && remote_user->access_level >= 80)
 				{
 					command = "JOIN " + params[0];
 					sendRawMsg(command);
@@ -434,7 +508,7 @@ void IRCBot::messageLoop()
 
 			if (command == "PART")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISMASTER)
+				if (remote_user != NULL && remote_user->access_level >= 80)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -464,12 +538,13 @@ void IRCBot::messageLoop()
 
 			if (command == "NICK")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISMASTER)
+				if (remote_user != NULL && remote_user->access_level >= 100)
 				{
 					if (params[0] != "")
 					{
 						command = ":source NICK " + params[0];
 						sendRawMsg(command);
+						lastCmdOut = "NICK";
 					}
 					else sendPrivMsg(msgLoc, "Invalid syntax! Use: NICK <new_nick>");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
@@ -497,7 +572,6 @@ void IRCBot::messageLoop()
 							User* attUser = authUser(params[0], params[1], remote_nick, remote_host);
 							if (attUser != NULL)
 							{
-
 								sendPrivMsg(msgLoc, "You are now authenticated!");
 							} else sendPrivMsg(msgLoc, "Incorrect username or password");
 						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: AUTH <username> <password>");
@@ -506,32 +580,14 @@ void IRCBot::messageLoop()
 				continue;
 			}
 
-			if (command == "ME")
+			if (command == "DEAUTH")
 			{
 				if (remote_user != NULL)
 				{
-					command = "You are authenticated with the username '" + remote_user->name + "'.";
-					sendPrivMsg(remote_nick, command);
-
-					if (remote_user->flags & USER_ISMASTER) {
-						command = "You are a bot master.";
-						sendPrivMsg(remote_nick, command);
-					}
-					else 
-					{
-						if (remote_user->flags & USER_ISADMIN)
-						{
-							command = "You are an administrator.";
-							sendPrivMsg(remote_nick, command);
-						}
-						else
-						{
-							command = "You are a normal user.";
-							sendPrivMsg(remote_nick, command);
-						}
-					}
-				}
-				else sendPrivMsg(remote_nick, "You are not a registered user or are not logged in.");
+					remote_user->nick = "";
+					remote_user->host = "";
+					sendPrivMsg(msgLoc, "You are no longer authenticated.");
+				} else sendPrivMsg(msgLoc, "You are not currently authenticated!");
 				continue;
 			}
 
@@ -541,7 +597,7 @@ void IRCBot::messageLoop()
 
 			if (command == "INVITEME")
 			{
-				if (remote_user != NULL)
+				if (remote_user != NULL && remote_user->access_level >= 10)
 				{
 					if (params[0] != "")
 					{
@@ -558,7 +614,7 @@ void IRCBot::messageLoop()
 
 			if (command == "OPME")
 			{
-				if (remote_user != NULL)
+				if (remote_user != NULL && remote_user->access_level >= 10)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -572,7 +628,7 @@ void IRCBot::messageLoop()
 
 			if (command == "CHANNELS")
 			{
-				if (remote_user != NULL && (remote_user->flags & USER_ISADMIN))
+				if (remote_user != NULL && remote_user->access_level >= 80)
 				{
 					sendPrivMsg(remote_nick, "Currently in the following channels:");
 					command = "";
@@ -590,7 +646,7 @@ void IRCBot::messageLoop()
 			//CHANNEL ADMINISTRATION
 			if (command == "KICK")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				if (remote_user != NULL && remote_user->access_level >= 10)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -615,7 +671,7 @@ void IRCBot::messageLoop()
 
 			if (command == "BOOT")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				if (remote_user != NULL && remote_user->access_level >= 80)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -646,7 +702,7 @@ void IRCBot::messageLoop()
 
 			if (command == "OP")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				if (remote_user != NULL && remote_user->access_level >= 10)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -664,7 +720,7 @@ void IRCBot::messageLoop()
 
 			if (command == "DEOP")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				if (remote_user != NULL && remote_user->access_level >= 10)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -677,6 +733,148 @@ void IRCBot::messageLoop()
 						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: DEOP <nick>");
 					} else sendPrivMsg(msgLoc, "This command must be used in a channel!");
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				continue;
+			}
+
+
+			
+			//USER ADMINISTRATION
+			if (command == "USER")
+			{
+				if (params[0] != "")
+				{
+					if (strToUpper(params[0]) == "INFO")
+					{
+						//SELF INFORMATION
+						if (params[1] == "")
+						{
+							if (remote_user != NULL)
+							{
+								command = "You are authenticated with the username '" + remote_user->name + "'.";
+								sendPrivMsg(remote_nick, command);
+								stringstream s;
+								s << "You have an access level of " << remote_user->access_level;
+								sendPrivMsg(remote_nick, s.str());
+							} else sendPrivMsg(remote_nick, "You are not a registered user or are not logged in.");
+						}
+						else
+						{
+							User* u = getUserByName(params[1]);
+							if (u != NULL)
+							{
+								stringstream s;
+								s << u->name << " has an access level of " << u->access_level;
+								sendPrivMsg(remote_nick, s.str());
+							} else sendPrivMsg(remote_nick, "The user you specified does not exist!");
+						}
+						continue;
+					}
+					if (strToUpper(params[0]) == "SET")
+					{
+						if (remote_user != NULL)
+						{
+							if (params[1] != "")
+							{
+								//USER SET ACCESS
+								if (strToUpper(params[1]) == "ACCESS")
+								{
+									if (remote_user->access_level >= 80)
+									{
+										if (params[2] != "" && params[3] != "")
+										{
+											User* u = getUserByName(params[2]);
+											if (u != NULL)
+											{
+												int new_level = getIntFromStr(params[3]);
+												if (new_level > 0 && new_level < 100)
+												{
+													if (remote_user->access_level >= new_level)
+													{
+														u->access_level = new_level;
+														saveUsers();
+														sendPrivMsg(remote_nick, "The user " + u->name + " now has an access level of " + params[3]);
+													} else sendPrivMsg(remote_nick, "You cannot give a user higher access than your current level!");
+												} else sendPrivMsg(remote_nick, "You must set a valid access level! (1-99)");
+											} else sendPrivMsg(remote_nick, "The user you specified does not exist!");
+										} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET ACCESS <nick> <level>");
+									} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+									continue;
+								}
+								//USER SET PASSWORD
+								if (strToUpper(params[1]) == "PASSWORD")
+								{
+									if (params[2] != "")
+										{
+											remote_user->passwd = params[2];
+											saveUsers();
+											sendPrivMsg(remote_nick, "Your password has been updated.");
+										} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET PASSWORD <newpassword>");
+									continue;
+								}
+								//USER SET 
+								sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET <ACCESS|PASSWORD>");
+							} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET <ACCESS|PASSWORD>");
+						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+						continue;
+					}
+					//USER ADD
+					if (strToUpper(params[0]) == "ADD")
+					{
+						if (remote_user != NULL && remote_user->access_level >= 80)
+						{
+							if (params[1] != "" && params[2] != "")
+							{
+								User* u = getUserByName(params[1]);
+								if (u == NULL)
+								{
+									int access = getIntFromStr(params[2]);
+									if (access > 0 && access < 100)
+									{
+										stringstream s;
+										s << "temp" << rand();
+										addUser(params[1], s.str(), access);
+										saveUsers();
+										sendPrivMsg(remote_nick, "User have been created. Please have user auth with: AUTH " + params[1] + " " + s.str());
+									} else sendPrivMsg(remote_nick, "You must set a valid access level! (1-99)");
+								} else sendPrivMsg(remote_nick, "The username specified already exists!");
+							} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER ADD <username> <access>");
+						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+						continue;
+					}
+					//USER REMOVE
+					if (strToUpper(params[0]) == "REMOVE")
+					{
+						if (remote_user != NULL && remote_user->access_level >= 80)
+						{
+							if (params[1] != "")
+							{
+								User* u = getUserByName(params[1]);
+								if (u != NULL)
+								{
+									int i = 0;
+									for (; i < current_users.size(); i++)
+										if (current_users.at(i).name == u->name) break;
+									current_users.erase(current_users.begin()+i);
+									saveUsers();
+									sendPrivMsg(remote_nick, "The user has been removed.");
+								} else sendPrivMsg(remote_nick, "The user you specified doesn't exist!");
+							} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER REMOVE <username>");
+						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+						continue;
+					}
+					//USER LIST
+					if (strToUpper(params[0]) == "LIST")
+					{
+						if (remote_user != NULL && remote_user->access_level >= 25)
+						{
+							sendPrivMsg(remote_nick, "This command has not been implemented yet!");
+						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+						continue;
+					}
+					//nothing hit
+					sendPrivMsg(remote_nick, "Invalid syntax! Use: USER <INFO|SET|ADD|REMOVE|LIST>");
+				} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER <INFO|SET|ADD|REMOVE|LIST>");
+				//nothing hit
 				continue;
 			}
 
@@ -705,7 +903,7 @@ void IRCBot::messageLoop()
 
 			if (command == "SAY")
 			{
-				if (remote_user != NULL && remote_user->flags & USER_ISADMIN)
+				if (remote_user != NULL && remote_user->access_level >= 80)
 				{
 					if (msgLoc[0] == '#')
 					{
@@ -733,7 +931,7 @@ void IRCBot::messageLoop()
 
 			if (command == "NEWREASON")
 			{
-				if (remote_user != NULL)
+				if (remote_user != NULL && remote_user->access_level >= 50)
 				{
 					if (params[0] != "")
 					{
@@ -748,7 +946,7 @@ void IRCBot::messageLoop()
 				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
 			}
 
-			if (command == "GETREASON")
+			if (command == "GETREASON" && remote_user->access_level >= 50)
 			{
 				if (remote_user != NULL)
 				{

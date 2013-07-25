@@ -10,6 +10,7 @@ struct User {
 	std::string passwd;
 	std::string nick;
 	std::string host;
+	int access_level;
 	unsigned int flags;
 };
 
@@ -47,13 +48,15 @@ private:
 	//util functions
 	std::string strToUpper(std::string);
 	std::string getRandomLine(std::string);
+	int getIntFromStr(std::string);
 
 	//users
 	void loadUsers();
+	void saveUsers();
 	User* getUserByName(std::string);
 	User* getUserByHost(std::string);
 	User* authUser(std::string, std::string, std::string, std::string);
-	User* addUser(std::string, std::string);
+	User* addUser(std::string, std::string, int);
 
 	//channels
 	void loadChannels();
