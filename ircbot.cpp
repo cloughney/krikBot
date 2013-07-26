@@ -22,7 +22,7 @@ using namespace std;
 
 IRCBot::IRCBot()
 {
-	versionString = "0.1.002 25Jul13"; // VERSION
+	versionString = "0.1.004 26Jul13"; // VERSION
 	publicTrigger = '!';
 	keepAlive = true;
 }
@@ -293,6 +293,21 @@ void IRCBot::sendPrivMsg(string msgLoc, string msgOut)
 	}
 }
 
+void IRCBot::sendNoticeMsg(string msgLoc, string msgOut)
+{
+	if (DEBUGMODE)
+	{
+		cout << "sock == " << sock << endl;
+		cout << "msgLoc: '" << msgLoc << "'" << endl;
+		cout << "msgOut: '" << msgOut << "'" << endl;
+	}
+	if (sock > 1) 
+	{
+		msgOut = "NOTICE " + msgLoc + " :" + msgOut;
+		sendRawMsg(msgOut);
+	}
+}
+
 void IRCBot::messageLoop()
 {
 	loadUsers();
@@ -391,12 +406,13 @@ void IRCBot::messageLoop()
 		//CHANNEL JOIN MESSAGE
 		if (command == "JOIN")
 		{
+			//maintain channel list when joining
 			if (remote_nick == nick)
 			{
 				if (DEBUGMODE) cout << "JOINED CHANNEL!" << endl << "'" << paramStr << "'" << endl;
-				//Channel c;
-				//c.name = paramStr;
-				//current_channels.push_back();
+				Channel c;
+				c.name = paramStr;
+				current_channels.push_back(c);
 			}
 			continue;
 		}
@@ -404,10 +420,14 @@ void IRCBot::messageLoop()
 		//CHANNEL PART MESSAGE
 		if (command == "PART")
 		{
+			//maintain channel list when parting a channel
 			if (remote_nick == nick)
 			{
 				if (DEBUGMODE) cout << "PARTED CHANNEL!" << endl << "'" << paramStr << "'" << endl;
-				//current_channels.push_back(paramStr);
+				int i = 0;
+				for (; i < current_channels.size(); i++)
+					if (current_channels.at(i).name == paramStr) break;
+				current_channels.erase(current_channels.begin()+i);
 			}
 			continue;
 		}
@@ -415,11 +435,18 @@ void IRCBot::messageLoop()
 		//CHANNEL KICK MESSAGE
 		if (command == "KICK")
 		{
-			//if (remote_nick == nick)
-			//{
-				if (DEBUGMODE) cout << "KICKED FROM CHANNEL!" << endl << "'" << paramStr << "'" << endl;
-				//current_channels.push_back(paramStr);
-			//}
+			size_t pos = paramStr.find_first_of(' ');
+			string kicked_chan = paramStr.substr(0, pos);
+			paramStr = paramStr.substr(pos+1);
+			string kicked_nick = paramStr.substr(0, paramStr.find_first_of(' '));
+			if (kicked_nick == nick)
+			{
+				if (DEBUGMODE) cout << "KICKED FROM CHANNEL!" << endl << "'" << kicked_chan << "'" << endl << "'" << kicked_nick << "'" << endl;
+				int i = 0;
+				for (; i < current_channels.size(); i++)
+					if (current_channels.at(i).name == kicked_chan) break;
+				current_channels.erase(current_channels.begin()+i);
+			}
 			continue;
 		}
 
@@ -481,6 +508,8 @@ void IRCBot::messageLoop()
 				cout << "Param5: '" << params[4] << "'" << endl;
 			}
 
+
+
 			//HANDLE COMMANDS
 
 			//BOT CONTROL
@@ -491,7 +520,7 @@ void IRCBot::messageLoop()
 				{
 					sendRawMsg("QUIT :peace");
 					return;
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -502,7 +531,7 @@ void IRCBot::messageLoop()
 				{
 					command = "JOIN " + params[0];
 					sendRawMsg(command);
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -528,11 +557,11 @@ void IRCBot::messageLoop()
 							{
 								command = ":source PART " + params[0] + " :deuces";
 								sendRawMsg(command);
-							} else sendPrivMsg(msgLoc, "Invalid syntax! Use: PART <channel>");
+							} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: PART <channel>");
 						}
-						else sendPrivMsg(msgLoc, "Invalid syntax! Use: PART <channel>");
+						else sendNoticeMsg(remote_nick, "Invalid syntax! Use: PART <channel>");
 					}
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -546,14 +575,14 @@ void IRCBot::messageLoop()
 						sendRawMsg(command);
 						lastCmdOut = "NICK";
 					}
-					else sendPrivMsg(msgLoc, "Invalid syntax! Use: NICK <new_nick>");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+					else sendNoticeMsg(remote_nick, "Invalid syntax! Use: NICK <new_nick>");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
 			if (command == "VERSION")
 			{
-				sendPrivMsg(msgLoc, "Current Version: " + versionString);
+				sendNoticeMsg(remote_nick, "Current Version: " + versionString);
 				continue;
 			}
 
@@ -572,11 +601,11 @@ void IRCBot::messageLoop()
 							User* attUser = authUser(params[0], params[1], remote_nick, remote_host);
 							if (attUser != NULL)
 							{
-								sendPrivMsg(msgLoc, "You are now authenticated!");
-							} else sendPrivMsg(msgLoc, "Incorrect username or password");
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: AUTH <username> <password>");
-					} else sendPrivMsg(msgLoc, "You are already authenticated!");
-				} else sendPrivMsg(msgLoc, "This command must be used in a private message. Noob.");
+								sendNoticeMsg(remote_nick, "You are now authenticated!");
+							} else sendNoticeMsg(remote_nick, "Incorrect username or password");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: AUTH <username> <password>");
+					} else sendNoticeMsg(remote_nick, "You are already authenticated!");
+				} else sendNoticeMsg(remote_nick, "This command must be used in a private message. Noob.");
 				continue;
 			}
 
@@ -586,8 +615,8 @@ void IRCBot::messageLoop()
 				{
 					remote_user->nick = "";
 					remote_user->host = "";
-					sendPrivMsg(msgLoc, "You are no longer authenticated.");
-				} else sendPrivMsg(msgLoc, "You are not currently authenticated!");
+					sendNoticeMsg(remote_nick, "You are no longer authenticated.");
+				} else sendNoticeMsg(remote_nick, "You are not currently authenticated!");
 				continue;
 			}
 
@@ -606,9 +635,9 @@ void IRCBot::messageLoop()
 							command = ":source INVITE " + remote_nick + " :" + params[0];
 							sendRawMsg(command);
 						}
-						else sendPrivMsg(msgLoc, "Invalid syntax! Use: INVITEME <channel>");
-					} else sendPrivMsg(msgLoc, "Invalid syntax! Use: INVITEME <channel>");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+						else sendNoticeMsg(remote_nick, "Invalid syntax! Use: INVITEME <channel>");
+					} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: INVITEME <channel>");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -621,8 +650,8 @@ void IRCBot::messageLoop()
 						command = ":source MODE " + msgLoc + " +o :" + remote_nick;
 						sendRawMsg(command);
 					}
-					else sendPrivMsg(msgLoc, "This command must be executed in a channel. Noob.");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+					else sendNoticeMsg(remote_nick, "This command must be executed in a channel. Noob.");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -630,15 +659,17 @@ void IRCBot::messageLoop()
 			{
 				if (remote_user != NULL && remote_user->access_level >= 80)
 				{
-					sendPrivMsg(remote_nick, "Currently in the following channels:");
+					stringstream s;
+					s <<"Currently in " << current_channels.size() << " channels";
+					sendNoticeMsg(remote_nick, s.str());
 					command = "";
 					for (int i = current_channels.size()-1; i >= 0; i--)
 					{
 						command += current_channels.at(i).name;
 						command += (i == 0) ? "" : " ";
 					}
-					sendPrivMsg(remote_nick, command);
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+					sendNoticeMsg(remote_nick, command);
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -654,7 +685,7 @@ void IRCBot::messageLoop()
 						{
 							command = ":source KICK " + msgLoc + " " + params[0] + " :kicked";
 							sendRawMsg(command);
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: KICK <nick>");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: KICK <nick>");
 					}
 					else
 					{
@@ -662,10 +693,10 @@ void IRCBot::messageLoop()
 						{
 							command = ":source KICK " + params[0] + " " + params[1] + " :kicked";
 							sendRawMsg(command);
-							sendPrivMsg(msgLoc, "Kicked!");
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: KICK <channel> <nick>");
+							sendNoticeMsg(remote_nick, "Kicked!");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: KICK <channel> <nick>");
 					}
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -682,7 +713,7 @@ void IRCBot::messageLoop()
 							command = ":source KICK " + msgLoc + " " + params[0] + " :BOOTS!";
 							sleep(3);
 							sendRawMsg(command);
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: BOOT <nick>");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: BOOT <nick>");
 					}
 					else
 					{
@@ -693,10 +724,10 @@ void IRCBot::messageLoop()
 							command = ":source KICK " + params[0] + " " + params[1] + " :BOOTS!";
 							sleep(3);
 							sendRawMsg(command);
-							sendPrivMsg(msgLoc, "Kicked!");
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: BOOT <channel> <nick>");
+							sendNoticeMsg(remote_nick, "Kicked!");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: BOOT <channel> <nick>");
 					}
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -712,9 +743,9 @@ void IRCBot::messageLoop()
 							command += msgLoc + " +o";
 							command += " " + params[0];
 							sendRawMsg(command);
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: OP <nick>");
-					} else sendPrivMsg(msgLoc, "This command must be used in a channel!");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: OP <nick>");
+					} else sendNoticeMsg(remote_nick, "This command must be used in a channel!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -730,9 +761,9 @@ void IRCBot::messageLoop()
 							command += msgLoc + " -o";
 							command += " " + params[0];
 							sendRawMsg(command);
-						} else sendPrivMsg(msgLoc, "Invalid syntax! Use: DEOP <nick>");
-					} else sendPrivMsg(msgLoc, "This command must be used in a channel!");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+						} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: DEOP <nick>");
+					} else sendNoticeMsg(remote_nick, "This command must be used in a channel!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -751,11 +782,11 @@ void IRCBot::messageLoop()
 							if (remote_user != NULL)
 							{
 								command = "You are authenticated with the username '" + remote_user->name + "'.";
-								sendPrivMsg(remote_nick, command);
+								sendNoticeMsg(remote_nick, command);
 								stringstream s;
 								s << "You have an access level of " << remote_user->access_level;
-								sendPrivMsg(remote_nick, s.str());
-							} else sendPrivMsg(remote_nick, "You are not a registered user or are not logged in.");
+								sendNoticeMsg(remote_nick, s.str());
+							} else sendNoticeMsg(remote_nick, "You are not a registered user or are not logged in.");
 						}
 						else
 						{
@@ -764,8 +795,8 @@ void IRCBot::messageLoop()
 							{
 								stringstream s;
 								s << u->name << " has an access level of " << u->access_level;
-								sendPrivMsg(remote_nick, s.str());
-							} else sendPrivMsg(remote_nick, "The user you specified does not exist!");
+								sendNoticeMsg(remote_nick, s.str());
+							} else sendNoticeMsg(remote_nick, "The user you specified does not exist!");
 						}
 						continue;
 					}
@@ -792,12 +823,12 @@ void IRCBot::messageLoop()
 													{
 														u->access_level = new_level;
 														saveUsers();
-														sendPrivMsg(remote_nick, "The user " + u->name + " now has an access level of " + params[3]);
-													} else sendPrivMsg(remote_nick, "You cannot give a user higher access than your current level!");
-												} else sendPrivMsg(remote_nick, "You must set a valid access level! (1-99)");
-											} else sendPrivMsg(remote_nick, "The user you specified does not exist!");
-										} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET ACCESS <nick> <level>");
-									} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+														sendNoticeMsg(remote_nick, "The user " + u->name + " now has an access level of " + params[3]);
+													} else sendNoticeMsg(remote_nick, "You cannot give a user higher access than your current level!");
+												} else sendNoticeMsg(remote_nick, "You must set a valid access level! (1-99)");
+											} else sendNoticeMsg(remote_nick, "The user you specified does not exist!");
+										} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER SET ACCESS <nick> <level>");
+									} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 									continue;
 								}
 								//USER SET PASSWORD
@@ -807,14 +838,14 @@ void IRCBot::messageLoop()
 										{
 											remote_user->passwd = params[2];
 											saveUsers();
-											sendPrivMsg(remote_nick, "Your password has been updated.");
-										} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET PASSWORD <newpassword>");
+											sendNoticeMsg(remote_nick, "Your password has been updated.");
+										} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER SET PASSWORD <newpassword>");
 									continue;
 								}
 								//USER SET 
-								sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET <ACCESS|PASSWORD>");
-							} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER SET <ACCESS|PASSWORD>");
-						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+								sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER SET <ACCESS|PASSWORD>");
+							} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER SET <ACCESS|PASSWORD>");
+						} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 						continue;
 					}
 					//USER ADD
@@ -824,6 +855,7 @@ void IRCBot::messageLoop()
 						{
 							if (params[1] != "" && params[2] != "")
 							{
+								//TODO: check for valid username (won't break things)
 								User* u = getUserByName(params[1]);
 								if (u == NULL)
 								{
@@ -834,11 +866,11 @@ void IRCBot::messageLoop()
 										s << "temp" << rand();
 										addUser(params[1], s.str(), access);
 										saveUsers();
-										sendPrivMsg(remote_nick, "User have been created. Please have user auth with: AUTH " + params[1] + " " + s.str());
-									} else sendPrivMsg(remote_nick, "You must set a valid access level! (1-99)");
-								} else sendPrivMsg(remote_nick, "The username specified already exists!");
-							} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER ADD <username> <access>");
-						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+										sendNoticeMsg(remote_nick, "User have been created. Please have user auth with: AUTH " + params[1] + " " + s.str());
+									} else sendNoticeMsg(remote_nick, "You must set a valid access level! (1-99)");
+								} else sendNoticeMsg(remote_nick, "The username specified already exists!");
+							} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER ADD <username> <access>");
+						} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 						continue;
 					}
 					//USER REMOVE
@@ -856,24 +888,33 @@ void IRCBot::messageLoop()
 										if (current_users.at(i).name == u->name) break;
 									current_users.erase(current_users.begin()+i);
 									saveUsers();
-									sendPrivMsg(remote_nick, "The user has been removed.");
-								} else sendPrivMsg(remote_nick, "The user you specified doesn't exist!");
-							} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER REMOVE <username>");
-						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+									sendNoticeMsg(remote_nick, "The user has been removed.");
+								} else sendNoticeMsg(remote_nick, "The user you specified doesn't exist!");
+							} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER REMOVE <username>");
+						} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 						continue;
 					}
 					//USER LIST
 					if (strToUpper(params[0]) == "LIST")
 					{
-						if (remote_user != NULL && remote_user->access_level >= 25)
+						if (remote_user != NULL && remote_user->access_level >= 80)
 						{
-							sendPrivMsg(remote_nick, "This command has not been implemented yet!");
-						} else sendPrivMsg(remote_nick, "You are not authorized to use this command!");
+							stringstream s;
+							s << current_users.size() << " users";
+							sendNoticeMsg(remote_nick, s.str());
+							command = "";
+							for (int i = current_users.size()-1; i >= 0; i--)
+							{
+								command += current_users.at(i).name;
+								command += (i == 0) ? "" : " ";
+							}
+							sendNoticeMsg(remote_nick, command);
+						} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 						continue;
 					}
 					//nothing hit
-					sendPrivMsg(remote_nick, "Invalid syntax! Use: USER <INFO|SET|ADD|REMOVE|LIST>");
-				} else sendPrivMsg(remote_nick, "Invalid syntax! Use: USER <INFO|SET|ADD|REMOVE|LIST>");
+					sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER <INFO|SET|ADD|REMOVE|LIST>");
+				} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: USER <INFO|SET|ADD|REMOVE|LIST>");
 				//nothing hit
 				continue;
 			}
@@ -897,7 +938,11 @@ void IRCBot::messageLoop()
 
 			if (command == "BEER")
 			{
-				sendPrivMsg(msgLoc, "You can't be a real country unless you have a beer and an airline. It helps if you have some kind of a football team, or some nuclear weapons, but at the very least you need a beer. -Frank Zappa");
+				command = getRandomLine("beer");
+				if (command != "")
+					sendPrivMsg(msgLoc, command);
+				else
+					sendNoticeMsg(remote_nick, "There are no beer quotes!");
 				continue;
 			}
 
@@ -912,7 +957,7 @@ void IRCBot::messageLoop()
 							command = params[0] + " " + params[1] + " " + params[2] + " " + params[3] + " " + params[4];
 							sendPrivMsg(msgLoc, command);
 						}
-						else sendPrivMsg(msgLoc, "Invalid syntax! Use: SAY <nick> <message>");
+						else sendNoticeMsg(remote_nick, "Invalid syntax! Use: SAY <nick> <message>");
 					}
 					else
 					{
@@ -922,10 +967,10 @@ void IRCBot::messageLoop()
 				 			{
 				 				command = params[1] + " " + params[2] + " " + params[3] + " " + params[4];
 								sendPrivMsg(params[0], command);
-				 			} else sendPrivMsg(msgLoc, "Invalid syntax! Use: SAY <channel> <message>");
-				 		} else sendPrivMsg(msgLoc, "Invalid syntax! Use: SAY <channel> <message>");
+				 			} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: SAY <channel> <message>");
+				 		} else sendNoticeMsg(remote_nick, "Invalid syntax! Use: SAY <channel> <message>");
 					}
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+				} else sendNoticeMsg(remote_nick, "You are not authorized to use this command!");
 				continue;
 			}
 
@@ -940,10 +985,10 @@ void IRCBot::messageLoop()
 						{
 							f_thate_out << params[0] << " " << params[1] << " " << params[2] << " " << params[3] << " " << params[4] << endl;
 							f_thate_out.close();
-							sendPrivMsg(msgLoc, "Reason added!");
-						} else sendPrivMsg(msgLoc, "Couldn't open T-Hate file!");
-					} else sendPrivMsg(msgLoc, "Invalid syntax! Use: NEWREASON <reason>");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+							sendNoticeMsg(msgLoc, "Reason added!");
+						} else sendNoticeMsg(msgLoc, "Couldn't open T-Hate file!");
+					} else sendNoticeMsg(msgLoc, "Invalid syntax! Use: NEWREASON <reason>");
+				} else sendNoticeMsg(msgLoc, "You are not authorized to use this command!");
 			}
 
 			if (command == "GETREASON" && remote_user->access_level >= 50)
@@ -953,8 +998,8 @@ void IRCBot::messageLoop()
 					command = getRandomLine("t-hate");
 					if (command != "")
 						sendPrivMsg(msgLoc, command);
-					else sendPrivMsg(msgLoc, "Uh oh... Error");
-				} else sendPrivMsg(msgLoc, "You are not authorized to use this command!");
+					else sendNoticeMsg(msgLoc, "Uh oh... Error");
+				} else sendNoticeMsg(msgLoc, "You are not authorized to use this command!");
 			}
 
 		}

@@ -69,6 +69,7 @@ private:
 	//irc
 	void sendRawMsg(std::string);
 	void sendPrivMsg(std::string, std::string);
+	void sendNoticeMsg(std::string, std::string);
 	void messageLoop();
 public:
 	IRCBot();
