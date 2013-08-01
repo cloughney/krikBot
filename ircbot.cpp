@@ -204,9 +204,6 @@ void IRCBot::messageLoop()
 		}
 
 
-
-
-
 		//MESSAGE RECEIVED
 		if (command == "PRIVMSG")
 		{
