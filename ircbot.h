@@ -4,6 +4,21 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <cstddef>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <vector>
+#include <unistd.h>
+#include <stdlib.h>
+
+#define DEBUGMODE 1
+
+#define MAXBUFFERSIZE 1024
+#define MAXMSGPARAMS 5
 
 struct User {
 	std::string name;
@@ -71,6 +86,7 @@ private:
 	void sendPrivMsg(std::string, std::string);
 	void sendNoticeMsg(std::string, std::string);
 	void messageLoop();
+	void handle_command(std::string, std::string[], std::string, std::string, std::string, User*);
 public:
 	IRCBot();
 	~IRCBot();
